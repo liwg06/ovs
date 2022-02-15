@@ -1,0 +1,44 @@
+
+name: Coverity4ovs
+
+#Run once a day
+on:
+  push:
+    branches:
+      - master
+#  schedule:
+#    - cron:  '20 0 * * *'
+
+jobs:
+  coverity:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v2
+    - name: dep install
+      run: |
+        python -m pip install -U sphinx
+    - name: config
+      run: |
+        ./boot.sh ; \
+        ./configure
+    - name: tool download
+      run: |
+        time wget https://scan.coverity.com/download/linux64 \
+             --post-data "token=${{ secrets.COVERITY_TOKEN_OVS }}&project=${{ secrets.COVERITY_PROJECT_NAME }}" \
+             --progress=dot:giga -O coverity_tool.tgz
+    - name: tool install
+      run: |
+        ls -alh coverity_tool.tgz ; \
+        tar xzf coverity_tool.tgz
+    - name: make
+      run: time ./cov-analysis*/bin/cov-build --dir cov-int make -j4 || true
+    - name: archive
+      run: tar czvf ovs-mirror.tgz cov-int
+    - name: Coverity upload
+      run: |
+        curl --form token="${{ secrets.COVERITY_TOKEN_OVS }}" \
+             --form email="${{ secrets.COVERITY_EMAIL_ADDR }}" \
+             --form file=@${{ secrets.COVERITY_PROJECT_NAME }}.tgz \
+             --form version="$(date -u -I)-$(git rev-parse --short HEAD)" \
+             --form description="analysis of $(git branch --show-current)" \
+             https://scan.coverity.com/builds?project=${{ secrets.COVERITY_PROJECT_NAME }}
